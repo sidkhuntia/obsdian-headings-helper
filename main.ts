@@ -64,8 +64,7 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'heading',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'cycle');
-            },
-            hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'h' }]
+            }
         });
 
         // Heading up command
@@ -75,8 +74,7 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'chevron-up',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'up');
-            },
-            hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'ArrowUp' }]
+            }
         });
 
         // Heading down command
@@ -86,8 +84,7 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'chevron-down',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'down');
-            },
-            hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'ArrowDown' }]
+            }
         });
 
         // Individual heading level commands
