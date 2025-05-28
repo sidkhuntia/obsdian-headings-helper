@@ -54,3 +54,11 @@ If you find this plugin helpful, you can:
 ## License
 
 MIT License - see LICENSE file for details.
+
+<hr>
+
+# Roadmap
+- [ ] Integrate with Automatic Table of Contents to show the heading level in the toc
+- [ ] Customizable color for each heading level
+- [ ] Squash all actions into one action to better integrate with undo/redo
+- [ ] Allow for vim keybinds
