@@ -86,13 +86,11 @@ If your plugin does not need CSS, delete this file.
 }
 
 /* Optional: Custom styling for different themes */
-.theme-dark .cm-heading-helper-marker[data-level='1'],
-.theme-dark .cm-heading-helper-marker[data-level='2'] {
+.theme-dark .cm-heading-helper-marker[data-level='1'] {
 	color: var(--color-accent);
 }
 
-.theme-light .cm-heading-helper-marker[data-level='1'],
-.theme-light .cm-heading-helper-marker[data-level='2'] {
+.theme-light .cm-heading-helper-marker[data-level='1'] {
 	color: var(--color-accent);
 }
 

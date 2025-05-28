@@ -3,6 +3,20 @@ import { HeadingLevel, HeadingHelperSettings, LineInfo } from './types';
 import { MarkdownParser } from './parser';
 import { HierarchyChecker } from './hierarchy-checker';
 
+interface TransformationRequest {
+    lineNum: number;
+    currentLevel: HeadingLevel;
+    targetLevel: HeadingLevel;
+}
+
+interface HierarchyIssue {
+    type: string;
+    message: string;
+    currentLevel?: HeadingLevel;
+    targetLevel?: HeadingLevel;
+    lineNumber?: number;
+}
+
 export class HeadingOperations {
     private hierarchyChecker: HierarchyChecker;
 
@@ -17,8 +31,6 @@ export class HeadingOperations {
         if (!this.settings.enableCycling) return;
 
         const selections = editor.listSelections();
-
-        // Process each selection
         for (const selection of selections) {
             await this.processSelection(editor, selection, direction);
         }
@@ -29,34 +41,33 @@ export class HeadingOperations {
      */
     async setHeadingLevel(editor: Editor, targetLevel: HeadingLevel, lineNumber?: number): Promise<void> {
         if (lineNumber !== undefined) {
-            // Set specific line - only if it's a heading or if targeting paragraph from H6
-            const lineText = editor.getLine(lineNumber - 1);
-            const parsed = MarkdownParser.parseLine(lineText);
-            const isHeading = parsed.level !== HeadingLevel.Paragraph;
-            const isH6ToParagraph = (targetLevel === HeadingLevel.Paragraph && parsed.level === HeadingLevel.H6);
-            const canTransform = isHeading || isH6ToParagraph;
-
-            if (canTransform) {
-                // Use hierarchy checking if app is available
-                if (this.app) {
-                    await this.hierarchyChecker.checkAndWarnHierarchy(
-                        this.app,
-                        editor,
-                        parsed.level,
-                        targetLevel,
-                        lineNumber,
-                        () => this.transformLine(editor, lineNumber - 1, targetLevel)
-                    );
-                } else {
-                    // Fallback without hierarchy checking
-                    this.transformLine(editor, lineNumber - 1, targetLevel);
-                }
-            }
+            await this.setSpecificLine(editor, targetLevel, lineNumber);
         } else {
-            // Set for current selection
             const selections = editor.listSelections();
             for (const selection of selections) {
                 await this.processSelectionWithLevel(editor, selection, targetLevel);
+            }
+        }
+    }
+
+    private async setSpecificLine(editor: Editor, targetLevel: HeadingLevel, lineNumber: number): Promise<void> {
+        const lineText = editor.getLine(lineNumber - 1);
+        const parsed = MarkdownParser.parseLine(lineText);
+        const isHeading = parsed.level !== HeadingLevel.Paragraph;
+        const isH6ToParagraph = (targetLevel === HeadingLevel.Paragraph && parsed.level === HeadingLevel.H6);
+
+        if (isHeading || isH6ToParagraph) {
+            if (this.app) {
+                await this.hierarchyChecker.checkAndWarnHierarchy(
+                    this.app,
+                    editor,
+                    parsed.level,
+                    targetLevel,
+                    lineNumber,
+                    () => this.transformLine(editor, lineNumber - 1, targetLevel)
+                );
+            } else {
+                this.transformLine(editor, lineNumber - 1, targetLevel);
             }
         }
     }
@@ -66,14 +77,12 @@ export class HeadingOperations {
         const startLine = Math.min(anchor.line, head.line);
         const endLine = Math.max(anchor.line, head.line);
 
-        // Collect all proposed transformations first
-        const transformations: { lineNum: number; currentLevel: HeadingLevel; targetLevel: HeadingLevel; }[] = [];
+        const transformations: TransformationRequest[] = [];
 
         for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
             const lineText = editor.getLine(lineNum);
             const parsed = MarkdownParser.parseLine(lineText);
 
-            // Only process lines that are already headings
             if (parsed.level !== HeadingLevel.Paragraph) {
                 const newLevel = MarkdownParser.cycleHeading(parsed.level, direction, this.settings.wrapAfterH6);
                 const constrainedLevel = this.applyLevelConstraints(newLevel);
@@ -88,7 +97,6 @@ export class HeadingOperations {
             }
         }
 
-        // Execute batch transformation with single hierarchy check
         await this.executeBatchTransformation(editor, transformations, direction, startLine, endLine);
     }
 
@@ -97,19 +105,16 @@ export class HeadingOperations {
         const startLine = Math.min(anchor.line, head.line);
         const endLine = Math.max(anchor.line, head.line);
 
-        // Collect all proposed transformations first
-        const transformations: { lineNum: number; currentLevel: HeadingLevel; targetLevel: HeadingLevel; }[] = [];
+        const transformations: TransformationRequest[] = [];
 
         for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
             const lineText = editor.getLine(lineNum);
             const parsed = MarkdownParser.parseLine(lineText);
 
-            // Only process lines that are already headings, unless target is paragraph and current is H6
             const isHeading = parsed.level !== HeadingLevel.Paragraph;
             const isH6ToParagraph = (targetLevel === HeadingLevel.Paragraph && parsed.level === HeadingLevel.H6);
-            const canTransform = isHeading || isH6ToParagraph;
 
-            if (canTransform && parsed.level !== targetLevel) {
+            if ((isHeading || isH6ToParagraph) && parsed.level !== targetLevel) {
                 transformations.push({
                     lineNum,
                     currentLevel: parsed.level,
@@ -118,7 +123,6 @@ export class HeadingOperations {
             }
         }
 
-        // Execute batch transformation with single hierarchy check
         await this.executeBatchTransformation(editor, transformations, 'set', startLine, endLine);
     }
 
@@ -127,50 +131,39 @@ export class HeadingOperations {
      */
     private async executeBatchTransformation(
         editor: Editor,
-        transformations: { lineNum: number; currentLevel: HeadingLevel; targetLevel: HeadingLevel; }[],
+        transformations: TransformationRequest[],
         operationType: 'up' | 'down' | 'cycle' | 'set',
-        selectionStartLine: number, // 0-indexed
-        selectionEndLine: number    // 0-indexed
+        selectionStartLine: number,
+        selectionEndLine: number
     ): Promise<void> {
         if (transformations.length === 0) return;
 
         const originalStates = transformations.map(t => ({
-            lineNum: t.lineNum, // 0-indexed
+            lineNum: t.lineNum,
             originalText: editor.getLine(t.lineNum),
             originalLevel: t.currentLevel
         }));
 
-        const originalLevelsInSelectionMap = new Map<number, HeadingLevel>();
-        for (let i = selectionStartLine; i <= selectionEndLine; i++) {
-            const lineText = editor.getLine(i); // Get current text before any transformations in this batch
-            const transformedStateForThisLine = originalStates.find(s => s.lineNum === i);
+        const originalLevelsMap = this.buildOriginalLevelsMap(editor, selectionStartLine, selectionEndLine, originalStates);
 
-            if (transformedStateForThisLine) {
-                // If this line IS one of the lines being transformed, its originalLevel is in originalStates
-                originalLevelsInSelectionMap.set(i, transformedStateForThisLine.originalLevel);
-            } else {
-                // If this line is in selection but NOT explicitly in transformations, parse its current state as original
-                const parsed = MarkdownParser.parseLine(lineText);
-                originalLevelsInSelectionMap.set(i, parsed.level);
-            }
-        }
-
-        // Apply all transformations first
+        // Apply all transformations
         for (const transformation of transformations) {
             this.transformLine(editor, transformation.lineNum, transformation.targetLevel);
         }
 
-        if (this.app && transformations.length > 0 && this.settings.checkHierarchy) { // Added checkHierarchy setting
+        // Check hierarchy if enabled
+        if (this.app && transformations.length > 0 && this.settings.checkHierarchy) {
             const shouldContinue = await this.checkBatchHierarchy(
                 editor,
                 transformations,
-                originalLevelsInSelectionMap,
+                originalLevelsMap,
                 operationType,
                 selectionStartLine,
                 selectionEndLine
             );
 
             if (!shouldContinue) {
+                // Revert all changes
                 for (const original of originalStates) {
                     editor.replaceRange(
                         original.originalText,
@@ -182,22 +175,40 @@ export class HeadingOperations {
         }
     }
 
+    private buildOriginalLevelsMap(
+        editor: Editor,
+        selectionStartLine: number,
+        selectionEndLine: number,
+        originalStates: { lineNum: number; originalText: string; originalLevel: HeadingLevel; }[]
+    ): Map<number, HeadingLevel> {
+        const originalLevelsMap = new Map<number, HeadingLevel>();
+
+        for (let i = selectionStartLine; i <= selectionEndLine; i++) {
+            const transformedState = originalStates.find(s => s.lineNum === i);
+
+            if (transformedState) {
+                originalLevelsMap.set(i, transformedState.originalLevel);
+            } else {
+                const lineText = editor.getLine(i);
+                const parsed = MarkdownParser.parseLine(lineText);
+                originalLevelsMap.set(i, parsed.level);
+            }
+        }
+
+        return originalLevelsMap;
+    }
+
     /**
      * Check hierarchy for batch operations - returns false if operation should be blocked
      */
     private async checkBatchHierarchy(
         editor: Editor,
-        transformations: { lineNum: number; currentLevel: HeadingLevel; targetLevel: HeadingLevel; }[],
+        transformations: TransformationRequest[],
         originalLevelsInSelectionMap: Map<number, HeadingLevel>,
         operationType: 'up' | 'down' | 'cycle' | 'set',
-        selectionStartLine: number, // 0-indexed
-        selectionEndLine: number   // 0-indexed
+        selectionStartLine: number,
+        selectionEndLine: number
     ): Promise<boolean> {
-        // No need to check this.settings.checkHierarchy here as it's checked by caller
-        if (transformations.length === 0) {
-            return true;
-        }
-
         const batchIssues = this.analyzeBatchTransformation(
             editor,
             transformations,
@@ -206,47 +217,36 @@ export class HeadingOperations {
             selectionEndLine
         );
 
-        if (batchIssues.length === 0) {
-            return true;
-        }
+        if (batchIssues.length === 0) return true;
 
         const primaryIssue = batchIssues[0];
-        // Attempt to find a transformation that directly caused or represents the primary issue for a better notice context.
-        const representativeTransformation =
-            transformations.find(t => t.lineNum === (primaryIssue.lineNumber ? primaryIssue.lineNumber - 1 : -1)) || // Match by line number, ensure primaryIssue.lineNumber is defined
-            transformations.find(t => t.currentLevel === primaryIssue.currentLevel && t.targetLevel === primaryIssue.targetLevel) || // Match by levels
-            transformations[0]; // Fallback
+        const representativeTransformation = this.findRepresentativeTransformation(transformations, primaryIssue);
 
-        const warningDetails = {
-            type: primaryIssue.type,
-            // Use levels from the primary issue itself for accuracy, fallback to representative if not present
-            currentLevel: primaryIssue.currentLevel !== undefined ? primaryIssue.currentLevel : representativeTransformation.currentLevel,
-            targetLevel: primaryIssue.targetLevel !== undefined ? primaryIssue.targetLevel : representativeTransformation.targetLevel,
-            lineNumber: primaryIssue.lineNumber !== undefined ? primaryIssue.lineNumber : (representativeTransformation ? representativeTransformation.lineNum + 1 : 0), // Fallback for lineNumber
-            message: primaryIssue.message
+        const warningDetails = this.buildWarningDetails(primaryIssue, representativeTransformation);
+
+        new Notice(warningDetails.message, 5000);
+
+        // Allow 'set' operations after warning
+        if (operationType === 'set') return true;
+
+        const isBlockingWarning = ['hierarchy_break', 'demotion_blocked', 'promotion_blocked'].includes(warningDetails.type);
+        return !isBlockingWarning || this.settings.allowHierarchyOverride;
+    }
+
+    private findRepresentativeTransformation(transformations: TransformationRequest[], issue: HierarchyIssue): TransformationRequest {
+        return transformations.find(t => t.lineNum === (issue.lineNumber ? issue.lineNumber - 1 : -1)) ||
+            transformations.find(t => t.currentLevel === issue.currentLevel && t.targetLevel === issue.targetLevel) ||
+            transformations[0];
+    }
+
+    private buildWarningDetails(issue: HierarchyIssue, transformation: TransformationRequest) {
+        return {
+            type: issue.type,
+            currentLevel: issue.currentLevel ?? transformation.currentLevel,
+            targetLevel: issue.targetLevel ?? transformation.targetLevel,
+            lineNumber: issue.lineNumber ?? (transformation ? transformation.lineNum + 1 : 0),
+            message: issue.message
         };
-
-        new Notice(warningDetails.message, 5000); // User changed to 5000ms
-
-        // For "direct set", always allow after warning, unless it's a critical, non-overridable block.
-        // Critical blocks (like H6->Para w/o wrap, orphaning) should ideally have very specific types
-        // if they are to bypass the 'set' leniency. For now, 'set' is lenient for all 'hierarchy_break', 'demotion_blocked', 'promotion_blocked'.
-        if (operationType === 'set') {
-            // However, certain fundamental issues should probably still block 'set' or lead to no-op
-            // e.g., H6->Para without wrapAfterH6 is a direct violation, not just hierarchy.
-            // For now, sticking to user's "direct set allow operation and just issue a warning"
-            return true;
-        }
-
-        const isBlockingWarning = warningDetails.type === 'hierarchy_break' ||
-            warningDetails.type === 'demotion_blocked' ||
-            warningDetails.type === 'promotion_blocked';
-
-        if (isBlockingWarning && !this.settings.allowHierarchyOverride) {
-            return false; // Block operation
-        }
-
-        return true; // Allow operation (either override is on, or it's a non-blocking warning)
     }
 
     /**
@@ -254,32 +254,40 @@ export class HeadingOperations {
      */
     private analyzeBatchTransformation(
         editor: Editor,
-        transformations: { lineNum: number; currentLevel: HeadingLevel; targetLevel: HeadingLevel; }[],
+        transformations: TransformationRequest[],
         originalLevelsInSelectionMap: Map<number, HeadingLevel>,
         selectionStartLine: number,
         selectionEndLine: number
-    ): { type: string; message: string; currentLevel?: HeadingLevel; targetLevel?: HeadingLevel; lineNumber?: number }[] { // Optionalized some for general warnings
-        const issues: { type: string; message: string; currentLevel?: HeadingLevel; targetLevel?: HeadingLevel; lineNumber?: number }[] = [];
+    ): HierarchyIssue[] {
+        const issues: HierarchyIssue[] = [];
         if (transformations.length === 0) return issues;
-
-        const getOriginalSelectionLevel = (lineNum: number): HeadingLevel => {
-            return originalLevelsInSelectionMap.get(lineNum) || HeadingLevel.Paragraph;
-        };
 
         const minTransformedLineNum = Math.min(...transformations.map(t => t.lineNum));
         const maxTransformedLineNum = Math.max(...transformations.map(t => t.lineNum));
-        // selectionLevelsAfterTransform reflects the state *after* the current batch of transformations.
         const selectionLevelsAfterTransform = this.getHeadingLevelsInRange(editor, minTransformedLineNum, maxTransformedLineNum);
 
+        // Check critical blocks
+        this.checkCriticalBlocks(transformations, originalLevelsInSelectionMap, selectionStartLine, selectionEndLine, issues);
 
-        // --- Rule Checks ---
+        // Check general warnings
+        this.checkGeneralWarnings(transformations, selectionLevelsAfterTransform, issues);
 
-        // 1. Critical Block: H6 to Paragraph violation (Direct transformation check)
+        return this.deduplicateIssues(issues);
+    }
+
+    private checkCriticalBlocks(
+        transformations: TransformationRequest[],
+        originalLevelsInSelectionMap: Map<number, HeadingLevel>,
+        selectionStartLine: number,
+        selectionEndLine: number,
+        issues: HierarchyIssue[]
+    ): void {
+        // H6 to Paragraph violation
         transformations.forEach(t => {
             if (t.currentLevel === HeadingLevel.H6 && t.targetLevel === HeadingLevel.Paragraph && !this.settings.wrapAfterH6) {
                 issues.push({
-                    type: 'demotion_blocked', // This is a critical block
-                    message: `Cannot demote H6 to Paragraph: "Wrap after H6" is disabled.`,
+                    type: 'demotion_blocked',
+                    message: 'Cannot demote H6 to Paragraph: "Wrap after H6" is disabled.',
                     currentLevel: t.currentLevel,
                     targetLevel: t.targetLevel,
                     lineNumber: t.lineNum + 1
@@ -287,54 +295,22 @@ export class HeadingOperations {
             }
         });
 
-        // 2. Critical Block: Higher level to Paragraph orphaning lower levels (Post-transform state check)
-        const higherToParaTransforms = transformations.filter(t =>
-            t.targetLevel === HeadingLevel.Paragraph &&
-            t.currentLevel >= HeadingLevel.H1 && t.currentLevel <= HeadingLevel.H5
-        );
-        higherToParaTransforms.forEach(t => {
-            const originalTransformedLevel = t.currentLevel;
-            for (let orphanedCandidateLevel = originalTransformedLevel + 1; orphanedCandidateLevel <= HeadingLevel.H6; orphanedCandidateLevel++) {
-                // Check if this orphanedCandidateLevel exists *anywhere* in the selection *after* transformations
-                let presentInSelectionAfterTransform = false;
-                for (let lineIdx = selectionStartLine; lineIdx <= selectionEndLine; lineIdx++) {
-                    const currentLineLevelAfterTransform = MarkdownParser.parseLine(editor.getLine(lineIdx)).level;
-                    if (currentLineLevelAfterTransform === orphanedCandidateLevel) {
-                        presentInSelectionAfterTransform = true;
-                        break;
-                    }
-                }
-                if (presentInSelectionAfterTransform) {
-                    issues.push({
-                        type: 'hierarchy_break', // This is a critical block
-                        message: `Converting H${originalTransformedLevel} to Paragraph may orphan H${orphanedCandidateLevel} headings within the selection.`,
-                        currentLevel: t.currentLevel,
-                        targetLevel: t.targetLevel,
-                        lineNumber: t.lineNum + 1
-                    });
-                    break;
-                }
-            }
-        });
-
-        // 3. Conditional Block: Promotion to H1 when H1 already in original selection
-        //    "when h2 cant go to h1 if h1 is already there in selection" - applying to any promotion to H1
+        // Promotion to H1 when H1 exists in original selection
         const promotionsToH1 = transformations.filter(t => t.targetLevel === HeadingLevel.H1 && t.currentLevel > HeadingLevel.H1);
         if (promotionsToH1.length > 0) {
-            let preExistingH1InOriginalSelection = false;
+            let preExistingH1 = false;
             for (let i = selectionStartLine; i <= selectionEndLine; i++) {
-                // Check only lines that were NOT part of this promotion to H1 attempt
-                const isCurrentlyBeingPromotedToH1 = promotionsToH1.some(p => p.lineNum === i);
-                if (!isCurrentlyBeingPromotedToH1 && getOriginalSelectionLevel(i) === HeadingLevel.H1) {
-                    preExistingH1InOriginalSelection = true;
+                const isBeingPromotedToH1 = promotionsToH1.some(p => p.lineNum === i);
+                if (!isBeingPromotedToH1 && originalLevelsInSelectionMap.get(i) === HeadingLevel.H1) {
+                    preExistingH1 = true;
                     break;
                 }
             }
-            if (preExistingH1InOriginalSelection) {
+            if (preExistingH1) {
                 promotionsToH1.forEach(t => {
                     issues.push({
                         type: 'promotion_blocked',
-                        message: `Cannot promote to H1: An H1 heading already existed within the original selection.`,
+                        message: 'Cannot promote to H1: An H1 heading already existed within the original selection.',
                         currentLevel: t.currentLevel,
                         targetLevel: t.targetLevel,
                         lineNumber: t.lineNum + 1
@@ -343,25 +319,23 @@ export class HeadingOperations {
             }
         }
 
-        // 4. Conditional Block: Demotion H5 to H6 when H6 already in original selection and wrap is disabled
-        //    "and h5 cant go to h6 is h6 is already there, when warp after h6 is disabled"
+        // H5 to H6 demotion when H6 exists and wrap disabled
         if (!this.settings.wrapAfterH6) {
             const demotionsH5ToH6 = transformations.filter(t => t.currentLevel === HeadingLevel.H5 && t.targetLevel === HeadingLevel.H6);
             if (demotionsH5ToH6.length > 0) {
-                let preExistingH6InOriginalSelection = false;
+                let preExistingH6 = false;
                 for (let i = selectionStartLine; i <= selectionEndLine; i++) {
-                    // Check only lines that were NOT part of this H5->H6 demotion attempt
-                    const isCurrentlyBeingDemotedH5ToH6 = demotionsH5ToH6.some(d => d.lineNum === i);
-                    if (!isCurrentlyBeingDemotedH5ToH6 && getOriginalSelectionLevel(i) === HeadingLevel.H6) {
-                        preExistingH6InOriginalSelection = true;
+                    const isBeingDemotedH5ToH6 = demotionsH5ToH6.some(d => d.lineNum === i);
+                    if (!isBeingDemotedH5ToH6 && originalLevelsInSelectionMap.get(i) === HeadingLevel.H6) {
+                        preExistingH6 = true;
                         break;
                     }
                 }
-                if (preExistingH6InOriginalSelection) {
+                if (preExistingH6) {
                     demotionsH5ToH6.forEach(t => {
                         issues.push({
                             type: 'demotion_blocked',
-                            message: `Cannot demote H5 to H6: An H6 already existed in the original selection, and "Wrap after H6" is disabled.`,
+                            message: 'Cannot demote H5 to H6: An H6 already existed in the original selection, and "Wrap after H6" is disabled.',
                             currentLevel: t.currentLevel,
                             targetLevel: t.targetLevel,
                             lineNumber: t.lineNum + 1
@@ -370,47 +344,55 @@ export class HeadingOperations {
                 }
             }
         }
+    }
 
-        // --- General Warnings (Post-transform state, if not already caught by a more specific block) ---
-
-        // Check if any blocking issues of these types already exist before adding general warnings
+    private checkGeneralWarnings(
+        transformations: TransformationRequest[],
+        selectionLevelsAfterTransform: Set<HeadingLevel>,
+        issues: HierarchyIssue[]
+    ): void {
         const hasBlockingH1Issue = issues.some(i => i.type === 'promotion_blocked' && i.targetLevel === HeadingLevel.H1);
-        const hasBlockingH6Issue = issues.some(i => i.type === 'demotion_blocked' && (i.targetLevel === HeadingLevel.H6 || i.currentLevel === HeadingLevel.H6));
+        const hasBlockingH6Issue = issues.some(i => i.type === 'demotion_blocked' &&
+            (i.targetLevel === HeadingLevel.H6 || i.currentLevel === HeadingLevel.H6));
 
-        // General Warning: Selection now contains H1 and H2
+        // General warning: Selection contains H1 and H2
         if (!hasBlockingH1Issue && selectionLevelsAfterTransform.has(HeadingLevel.H1) && selectionLevelsAfterTransform.has(HeadingLevel.H2)) {
             const firstH1OrH2Line = transformations.find(t => t.targetLevel === HeadingLevel.H1 || t.targetLevel === HeadingLevel.H2) || transformations[0];
             issues.push({
                 type: 'general_warning',
-                message: `Warning: The selection now contains both H1 and H2 headings. This might affect document structure.`,
+                message: 'Warning: The selection now contains both H1 and H2 headings. This might affect document structure.',
                 currentLevel: firstH1OrH2Line?.currentLevel,
                 targetLevel: firstH1OrH2Line?.targetLevel,
                 lineNumber: firstH1OrH2Line ? firstH1OrH2Line.lineNum + 1 : undefined
             });
         }
 
-        // General Warning: Selection now contains H5 and H6, and wrap is disabled
-        if (!hasBlockingH6Issue && !this.settings.wrapAfterH6 && selectionLevelsAfterTransform.has(HeadingLevel.H5) && selectionLevelsAfterTransform.has(HeadingLevel.H6)) {
+        // General warning: Selection contains H5 and H6 with wrap disabled
+        if (!hasBlockingH6Issue && !this.settings.wrapAfterH6 &&
+            selectionLevelsAfterTransform.has(HeadingLevel.H5) && selectionLevelsAfterTransform.has(HeadingLevel.H6)) {
             const firstH5OrH6Line = transformations.find(t => t.targetLevel === HeadingLevel.H5 || t.targetLevel === HeadingLevel.H6) || transformations[0];
             issues.push({
                 type: 'general_warning',
-                message: `Warning: Selection now contains H5 and H6 headings, and "Wrap after H6" is disabled. This may lead to H6 dead-ends.`,
+                message: 'Warning: Selection now contains H5 and H6 headings, and "Wrap after H6" is disabled. This may lead to H6 dead-ends.',
                 currentLevel: firstH5OrH6Line?.currentLevel,
                 targetLevel: firstH5OrH6Line?.targetLevel,
                 lineNumber: firstH5OrH6Line ? firstH5OrH6Line.lineNum + 1 : undefined
             });
         }
+    }
 
-        // Deduplicate issues based on message and line number
-        const uniqueIssues: typeof issues = [];
+    private deduplicateIssues(issues: HierarchyIssue[]): HierarchyIssue[] {
+        const uniqueIssues: HierarchyIssue[] = [];
         const seenIssues = new Set<string>();
+
         for (const issue of issues) {
-            const key = `${issue.lineNumber}-${issue.message}`; // LineNumber might be undefined for some general warnings not tied to a specific line
-            if (!seenIssues.has(key) || !issue.lineNumber) { // Allow general warnings not tied to a line to pass if message is unique
+            const key = issue.lineNumber ? `${issue.lineNumber}-${issue.message}` : issue.message;
+            if (!seenIssues.has(key)) {
                 uniqueIssues.push(issue);
-                if (issue.lineNumber) seenIssues.add(key); else seenIssues.add(issue.message); // Use message if no line number
+                seenIssues.add(key);
             }
         }
+
         return uniqueIssues;
     }
 
@@ -542,7 +524,6 @@ export class HeadingOperations {
 
         editor.replaceRange(newText, lineStart, lineEnd);
     }
-
 
     /**
      * Apply min/max constraints to a heading level

@@ -1,18 +1,19 @@
 import { EditorView, ViewPlugin, ViewUpdate, gutter, GutterMarker } from '@codemirror/view';
-import { Prec, RangeSet, RangeSetBuilder } from '@codemirror/state';
+import { Prec, RangeSet, RangeSetBuilder, Extension } from '@codemirror/state';
 import { Menu } from 'obsidian';
 import { HeadingLevel, HeadingHelperSettings } from './types';
 import { MarkdownParser } from './parser';
 
 const MARKER_CSS_CLASS = 'cm-heading-helper-marker';
+const GUTTER_CSS_CLASS = 'cm-heading-helper-gutter';
 
 class HeadingMarker extends GutterMarker {
     constructor(
-        readonly view: EditorView,
-        readonly headingLevel: HeadingLevel,
-        readonly lineNumber: number,
-        readonly settings: HeadingHelperSettings,
-        readonly onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void
+        private readonly view: EditorView,
+        private readonly headingLevel: HeadingLevel,
+        private readonly lineNumber: number,
+        private readonly settings: HeadingHelperSettings,
+        private readonly onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void
     ) {
         super();
     }
@@ -32,55 +33,122 @@ class HeadingMarker extends GutterMarker {
     }
 }
 
+class HeadingMarkersPlugin {
+    view: EditorView;
+    markers: RangeSet<HeadingMarker>;
+
+    constructor(
+        view: EditorView,
+        private readonly settings: HeadingHelperSettings,
+        private readonly onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void
+    ) {
+        this.view = view;
+        this.markers = this.buildMarkers(view);
+    }
+
+    buildMarkers(view: EditorView): RangeSet<HeadingMarker> {
+        if (!this.settings.showGutterBadges) {
+            return RangeSet.empty;
+        }
+
+        const builder = new RangeSetBuilder<HeadingMarker>();
+        const doc = view.state.doc;
+
+        for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+            const line = doc.line(lineNumber);
+            const parsed = MarkdownParser.parseLine(line.text);
+
+            if (parsed.level !== HeadingLevel.Paragraph) {
+                const marker = new HeadingMarker(
+                    view,
+                    parsed.level,
+                    lineNumber,
+                    this.settings,
+                    this.onLevelChange
+                );
+                builder.add(line.from, line.from, marker);
+            }
+        }
+
+        return builder.finish();
+    }
+
+    update(update: ViewUpdate): void {
+        if (update.docChanged || update.viewportChanged) {
+            this.markers = this.buildMarkers(this.view);
+        }
+    }
+}
+
+function createGutterEventHandlers(onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void) {
+    return {
+        click: (view: EditorView, block: any, evt: MouseEvent): boolean => {
+            const target = evt.target as HTMLElement;
+            if (!target?.classList.contains(MARKER_CSS_CLASS) || target.classList.contains('has-active-menu')) {
+                return target?.classList.contains(MARKER_CSS_CLASS) || false;
+            }
+
+            const level = target.dataset.level;
+            if (!level) return false;
+
+            const line = view.state.doc.lineAt(block.from);
+            const lineNumber = line.number;
+
+            showLevelSelectionMenu(target, lineNumber, onLevelChange);
+            return true;
+        },
+        mousedown: (_view: EditorView, _line: any, evt: MouseEvent): boolean => {
+            const target = evt.target as HTMLElement;
+            return target?.classList.contains(MARKER_CSS_CLASS) || false;
+        }
+    };
+}
+
+function showLevelSelectionMenu(
+    target: HTMLElement,
+    lineNumber: number,
+    onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void
+): void {
+    const menu = new Menu();
+
+    // Add paragraph option
+    menu.addItem((item) =>
+        item
+            .setTitle('Paragraph')
+            .setIcon('type')
+            .onClick(() => onLevelChange(lineNumber, HeadingLevel.Paragraph))
+    );
+
+    // Add heading level options
+    for (let level = 1; level <= 6; level++) {
+        menu.addItem((item) =>
+            item
+                .setTitle(`Heading ${level}`)
+                .setIcon(`heading-${level}`)
+                .onClick(() => onLevelChange(lineNumber, level as HeadingLevel))
+        );
+    }
+
+    target.classList.add('has-active-menu');
+
+    // Position and show menu
+    const rect = target.getBoundingClientRect();
+    menu.showAtPosition({ x: rect.left, y: rect.bottom + 4 });
+
+    // Cleanup after menu closes
+    setTimeout(() => {
+        target.classList.remove('has-active-menu');
+    }, 100);
+}
+
 export function createHeadingGutterPlugin(
     settings: HeadingHelperSettings,
     onLevelChange: (lineNumber: number, newLevel: HeadingLevel) => void
-) {
+): Extension[] {
     const markers = ViewPlugin.fromClass(
-        class {
-            view: EditorView;
-            markers: RangeSet<HeadingMarker>;
-
+        class extends HeadingMarkersPlugin {
             constructor(view: EditorView) {
-                this.view = view;
-                this.markers = this.buildMarkers(view);
-            }
-
-            buildMarkers(view: EditorView): RangeSet<HeadingMarker> {
-                if (!settings.showGutterBadges) {
-                    return RangeSet.empty;
-                }
-
-                const builder = new RangeSetBuilder<HeadingMarker>();
-                const doc = view.state.doc;
-
-                // Parse each line to detect headings
-                for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
-                    const line = doc.line(lineNumber);
-                    const lineText = line.text;
-                    const parsed = MarkdownParser.parseLine(lineText);
-
-                    // Only show markers for actual headings (H1-H6)
-                    if (parsed.level !== HeadingLevel.Paragraph) {
-                        const marker = new HeadingMarker(
-                            view,
-                            parsed.level,
-                            lineNumber,
-                            settings,
-                            onLevelChange
-                        );
-                        builder.add(line.from, line.from, marker);
-                    }
-                }
-
-                return builder.finish();
-            }
-
-            update(update: ViewUpdate) {
-                // Rebuild markers if document changed or settings changed
-                if (update.docChanged || update.viewportChanged) {
-                    this.markers = this.buildMarkers(this.view);
-                }
+                super(view, settings, onLevelChange);
             }
         }
     );
@@ -89,77 +157,18 @@ export function createHeadingGutterPlugin(
         markers,
         Prec.high(
             gutter({
-                class: 'cm-heading-helper-gutter',
+                class: GUTTER_CSS_CLASS,
                 markers(view) {
                     return view.plugin(markers)?.markers || RangeSet.empty;
                 },
-                domEventHandlers: {
-                    click: (view, block, evt: MouseEvent) => {
-                        const target = evt.target as HTMLElement;
-                        if (!target?.classList.contains(MARKER_CSS_CLASS)) {
-                            return false;
-                        }
-
-                        if (target.classList.contains('has-active-menu')) {
-                            return true;
-                        }
-
-                        const level = target.dataset.level;
-                        if (!level) return false;
-
-                        const line = view.state.doc.lineAt(block.from);
-                        const lineNumber = line.number;
-
-                        // Show level selection menu
-                        const menu = new Menu();
-
-                        // Add paragraph option
-                        menu.addItem((item) =>
-                            item
-                                .setTitle('Paragraph')
-                                .setIcon('type')
-                                .onClick(() => {
-                                    onLevelChange(lineNumber, HeadingLevel.Paragraph);
-                                })
-                        );
-
-                        // Add heading level options
-                        for (let level = 1; level <= 6; level++) {
-                            menu.addItem((item) =>
-                                item
-                                    .setTitle(`Heading ${level}`)
-                                    .setIcon(`heading-${level}`)
-                                    .onClick(() => {
-                                        onLevelChange(lineNumber, level as HeadingLevel);
-                                    })
-                            );
-                        }
-
-                        target.classList.add('has-active-menu');
-
-                        // Position and show menu
-                        const rect = target.getBoundingClientRect();
-                        menu.showAtPosition({ x: rect.left, y: rect.bottom + 4 });
-
-                        // Remove class when menu closes (basic cleanup)
-                        setTimeout(() => {
-                            target.classList.remove('has-active-menu');
-                        }, 100);
-
-                        return true;
-                    },
-                    mousedown: (_view, _line, evt: MouseEvent) => {
-                        const target = evt.target as HTMLElement;
-                        return target?.classList.contains(MARKER_CSS_CLASS) || false;
-                    },
-                },
+                domEventHandlers: createGutterEventHandlers(onLevelChange)
             })
-        ),
+        )
     ];
 }
 
 export class GutterBadgeManager {
-    private gutterExtension: any;
+    private gutterExtension: Extension[];
 
     constructor(
         private settings: HeadingHelperSettings,
@@ -168,23 +177,12 @@ export class GutterBadgeManager {
         this.gutterExtension = createHeadingGutterPlugin(settings, onLevelChange);
     }
 
-    getExtension() {
+    getExtension(): Extension[] {
         return this.gutterExtension;
     }
 
-    updateSettings(newSettings: HeadingHelperSettings) {
+    updateSettings(newSettings: HeadingHelperSettings): void {
         this.settings = newSettings;
-        // Note: Extension will need to be recreated for settings changes
         this.gutterExtension = createHeadingGutterPlugin(newSettings, this.onLevelChange);
     }
-
-    // Legacy method for compatibility - now handled by the gutter system
-    updateBadges(view: EditorView): void {
-        // The gutter system handles updates automatically through ViewPlugin
-        // This method is kept for backward compatibility but is essentially a no-op
-    }
-}
-
-// Export for backward compatibility
-export const badgeField = null; // No longer needed with gutter approach
-export const updateBadges = null; // No longer needed with gutter approach 
+} 
