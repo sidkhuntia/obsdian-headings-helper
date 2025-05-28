@@ -26,11 +26,7 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Heading Helper Settings' });
-
         // Cycling Settings
-        containerEl.createEl('h3', { text: 'Heading Cycling' });
-
         new Setting(containerEl)
             .setName('Enable heading cycling')
             .setDesc('Allow cycling through heading levels with hotkeys')
@@ -43,7 +39,7 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Wrap after H6')
-            .setDesc('When demoting H6, convert it to paragraph instead of staying at H6. If disabled, H6 remains H6 when demoting.')
+            .setDesc('Allow H6 to be wrapped after H6 to Paragraph. If disabled, H6 will remain H6 when demoted.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.wrapAfterH6)
                 .onChange(async (value) => {
@@ -53,7 +49,7 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Check heading hierarchy')
-            .setDesc('Smart warnings (via Notices) for hierarchy issues: (1) H2→H1 when H1 already exists, (2) H5→H6 when H6 can\'t demote (wrap off) & both exist, (3) Converting headings to Paragraph if lower levels exist. One notice per unique issue/line.')
+            .setDesc('Check for hierarchy issues and warn if they exist.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.checkHierarchy)
                 .onChange(async (value) => {
@@ -63,7 +59,7 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Allow hierarchy override')
-            .setDesc('When a hierarchy warning notice appears for a blocking issue (e.g., duplicate H1, demotion blocked), allow the operation to proceed. If off, blocking issues prevent the change.')
+            .setDesc('Allow the operation to proceed even if a hierarchy issue exists.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.allowHierarchyOverride)
                 .onChange(async (value) => {
@@ -72,8 +68,8 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Minimum heading level')
-            .setDesc('The minimum heading level to cycle to')
+            .setName('Maximum heading level')
+            .setDesc('The maximum heading level to cycle to')
             .addDropdown(dropdown => dropdown
                 .addOption(HeadingLevel.H1.toString(), 'H1')
                 .addOption(HeadingLevel.H2.toString(), 'H2')
@@ -88,8 +84,8 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Maximum heading level')
-            .setDesc('The maximum heading level to cycle to')
+            .setName('Minimum heading level')
+            .setDesc('The minimum heading level to cycle to')
             .addDropdown(dropdown => dropdown
                 .addOption(HeadingLevel.H1.toString(), 'H1')
                 .addOption(HeadingLevel.H2.toString(), 'H2')
@@ -104,8 +100,6 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
                 }));
 
         // Gutter Badge Settings
-        containerEl.createEl('h3', { text: 'Gutter Badges' });
-
         new Setting(containerEl)
             .setName('Show gutter badges')
             .setDesc('Display heading level indicators in the editor gutter')
@@ -140,17 +134,11 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
                 }));
 
         // Help Section
-        containerEl.createEl('h3', { text: 'Hotkeys' });
-
         const helpText = containerEl.createEl('div');
         helpText.innerHTML = `
-			<p>Default hotkeys (can be customized in Obsidian's Hotkeys settings):</p>
-			<ul>
-				<li><strong>Ctrl/⌘ + Shift + H</strong> - Cycle heading level</li>
-				<li><strong>Ctrl/⌘ + Shift + ↑</strong> - Decrease heading level</li>
-				<li><strong>Ctrl/⌘ + Shift + ↓</strong> - Increase heading level</li>
-			</ul>
-			<p>Click on gutter badges to change heading levels with your mouse.</p>
+            <h4>Usage Tips</h4>
+			<p>Configure hotkeys for all commands in Obsidian's main settings under <strong>Hotkeys</strong> (search for "Heading Helper").</p>
+			<p>Click on gutter badges (if enabled) to change heading levels directly with your mouse.</p>
 		`;
     }
 } 
