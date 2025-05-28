@@ -4,7 +4,7 @@ name: Release Obsidian plugin
 on:
   push:
     tags:
-      - "v*"
+      - "*"
 
 env:
   PLUGIN_NAME: heading-helper
