@@ -4,7 +4,7 @@ import { Extension } from '@codemirror/state';
 import { HeadingLevel, HeadingHelperSettings } from './types';
 import { DEFAULT_SETTINGS, HeadingHelperSettingTab } from './settings';
 import { HeadingOperations } from './heading-operations';
-import { GutterBadgeManager, badgeField } from './gutter-badge';
+import { GutterBadgeManager } from './gutter-badge';
 import { HierarchyChecker } from './hierarchy-checker';
 
 export default class HeadingHelperPlugin extends Plugin {
@@ -15,7 +15,6 @@ export default class HeadingHelperPlugin extends Plugin {
     private editorExtensions: Extension[] = [];
 
     async onload() {
-        console.log('Loading Heading Helper plugin');
 
         // Load settings
         await this.loadSettings();
@@ -39,7 +38,6 @@ export default class HeadingHelperPlugin extends Plugin {
     }
 
     onunload() {
-        console.log('Unloading Heading Helper plugin');
     }
 
     async loadSettings() {
@@ -51,8 +49,11 @@ export default class HeadingHelperPlugin extends Plugin {
 
         // Update operations with new settings
         this.headingOps = new HeadingOperations(this.settings, this.app);
-        this.badgeManager = new GutterBadgeManager(this.settings, this.onBadgeLevelChange.bind(this));
+        this.badgeManager.updateSettings(this.settings);
         this.hierarchyChecker = new HierarchyChecker(this.settings);
+
+        // Re-register editor extensions with new settings
+        this.app.workspace.updateOptions();
     }
 
     private addCommands(): void {
@@ -63,7 +64,6 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'heading',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'cycle');
-                this.refreshBadgesForEditor(editor);
             },
             hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'h' }]
         });
@@ -75,7 +75,6 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'chevron-up',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'up');
-                this.refreshBadgesForEditor(editor);
             },
             hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'ArrowUp' }]
         });
@@ -87,7 +86,6 @@ export default class HeadingHelperPlugin extends Plugin {
             icon: 'chevron-down',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.cycleHeading(editor, 'down');
-                this.refreshBadgesForEditor(editor);
             },
             hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'ArrowDown' }]
         });
@@ -99,7 +97,6 @@ export default class HeadingHelperPlugin extends Plugin {
                 name: `Set as Heading ${level}`,
                 editorCallback: async (editor: Editor) => {
                     await this.headingOps.setHeadingLevel(editor, level as HeadingLevel);
-                    this.refreshBadgesForEditor(editor);
                 }
             });
         }
@@ -110,44 +107,40 @@ export default class HeadingHelperPlugin extends Plugin {
             name: 'Set as Paragraph',
             editorCallback: async (editor: Editor) => {
                 await this.headingOps.setHeadingLevel(editor, HeadingLevel.Paragraph);
-                this.refreshBadgesForEditor(editor);
             }
         });
     }
 
     private registerEditorExtensions(): void {
-        // Register the badge field extension
-        this.editorExtensions = [badgeField];
-
+        // Register the gutter extension
+        this.editorExtensions = this.badgeManager.getExtension();
         this.registerEditorExtension(this.editorExtensions);
 
-        // Listen for editor changes to update badges
+        // Listen for editor changes to update badges (handled automatically by gutter system)
+        // The gutter system updates automatically, but we keep this for any other update needs
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor, info) => {
-                // Debounce badge updates
+                // Badge updates are now handled automatically by the gutter system
+                // This is kept for any future manual refresh needs
                 setTimeout(() => {
-                    this.refreshBadgesForEditor(editor);
+                    // No action needed - gutter handles this automatically
                 }, 100);
             })
         );
     }
 
     private registerEvents(): void {
-        // Refresh badges when switching between files
+        // Refresh badges when switching between files (handled automatically by gutter)
         this.registerEvent(
             this.app.workspace.on('active-leaf-change', () => {
-                setTimeout(() => {
-                    this.refreshBadges();
-                }, 50);
+                // Gutter system handles this automatically
             })
         );
 
-        // Refresh badges when editor mode changes
+        // Refresh badges when editor mode changes (handled automatically by gutter)
         this.registerEvent(
             this.app.workspace.on('layout-change', () => {
-                setTimeout(() => {
-                    this.refreshBadges();
-                }, 50);
+                // Gutter system handles this automatically
             })
         );
     }
@@ -156,28 +149,21 @@ export default class HeadingHelperPlugin extends Plugin {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (activeView?.editor) {
             await this.headingOps.setHeadingLevel(activeView.editor, newLevel, lineNumber);
-            this.refreshBadgesForEditor(activeView.editor);
+            // Gutter system will update automatically
         }
     }
 
     public refreshBadges(): void {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (activeView?.editor) {
-            this.refreshBadgesForEditor(activeView.editor);
-        }
+        // Method kept for compatibility but gutter system handles updates automatically
+        // This could be used to force a refresh if needed in the future
     }
 
     private refreshBadgesForEditor(editor: Editor): void {
-        // Get the CodeMirror editor view
-        const editorView = this.getEditorView(editor);
-        if (editorView && this.badgeManager) {
-            this.badgeManager.updateBadges(editorView);
-        }
+        // Method kept for compatibility but gutter system handles updates automatically
     }
 
     private getEditorView(editor: Editor): EditorView | null {
-        // This is a bit of a hack to get the CodeMirror EditorView from Obsidian's Editor
-        // We need to access the internal CodeMirror instance
+        // This method is kept for potential future use
         const cm = (editor as any).cm;
         if (cm && cm instanceof EditorView) {
             return cm;
@@ -192,13 +178,11 @@ export default class HeadingHelperPlugin extends Plugin {
 
     public async setHeadingLevel(editor: Editor, targetLevel: HeadingLevel, lineNumber?: number): Promise<void> {
         await this.headingOps.setHeadingLevel(editor, targetLevel, lineNumber);
-        this.refreshBadgesForEditor(editor);
+        // Gutter system will update automatically
     }
 
     public async cycleHeading(editor: Editor, direction: 'up' | 'down' | 'cycle' = 'cycle'): Promise<void> {
-        console.log('cycleHeading', direction);
         await this.headingOps.cycleHeading(editor, direction);
-        console.log('cycleHeading done');
-        this.refreshBadgesForEditor(editor);
+        // Gutter system will update automatically
     }
 } 

@@ -6,3 +6,118 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/*
+  Heading Helper Plugin Styles
+  Based on the Lapel plugin approach for proper gutter alignment
+*/
+
+/* Hide gutters inside table cell editor */
+.table-cell-wrapper .cm-gutters {
+	display: none;
+}
+
+/* Main gutter styling */
+.cm-heading-helper-gutter {
+	font-size: var(--font-smallest);
+	letter-spacing: 0.015em;
+	text-align: center;
+	width: 4ch;
+	min-width: 4ch;
+}
+
+/* Heading marker styling */
+.cm-heading-helper-marker {
+	cursor: var(--cursor);
+	color: var(--text-faint);
+	display: inline-block;
+	font-weight: 500;
+	transition: color 0.15s ease;
+	user-select: none;
+	line-height: 1.2;
+}
+
+/* Hover and active states */
+.cm-heading-helper-marker.has-active-menu,
+.cm-heading-helper-marker:hover {
+	color: var(--text-accent-hover);
+}
+
+/* Level-specific markers with custom CSS variables */
+.cm-heading-helper-marker[data-level='1'] {
+	--heading-marker: 'H1';
+	color: var(--text-accent);
+	font-weight: 600;
+}
+
+.cm-heading-helper-marker[data-level='2'] {
+	--heading-marker: 'H2';
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.cm-heading-helper-marker[data-level='3'] {
+	--heading-marker: 'H3';
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.cm-heading-helper-marker[data-level='4'] {
+	--heading-marker: 'H4';
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.cm-heading-helper-marker[data-level='5'] {
+	--heading-marker: 'H5';
+	color: var(--text-faint);
+	font-weight: 400;
+}
+
+.cm-heading-helper-marker[data-level='6'] {
+	--heading-marker: 'H6';
+	color: var(--text-faint);
+	font-weight: 400;
+}
+
+/* Display the marker content */
+.cm-heading-helper-marker:before {
+	content: var(--heading-marker);
+}
+
+/* Optional: Custom styling for different themes */
+.theme-dark .cm-heading-helper-marker[data-level='1'],
+.theme-dark .cm-heading-helper-marker[data-level='2'] {
+	color: var(--color-accent);
+}
+
+.theme-light .cm-heading-helper-marker[data-level='1'],
+.theme-light .cm-heading-helper-marker[data-level='2'] {
+	color: var(--color-accent);
+}
+
+/* Ensure proper alignment with heading text */
+.cm-heading-helper-gutter .cm-gutterElement {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--line-height-normal);
+}
+
+/* Additional customization examples (commented out by default) */
+/*
+.cm-heading-helper-marker[data-level="1"] {
+  --heading-marker: "●";
+  font-size: 14px;
+}
+
+.cm-heading-helper-marker[data-level="2"] {
+  --heading-marker: "○";
+  font-size: 12px;
+}
+
+.cm-heading-helper-marker[data-level="3"] {
+  --heading-marker: "▪";
+  font-size: 10px;
+}
+*/
