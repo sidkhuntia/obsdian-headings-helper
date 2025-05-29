@@ -140,10 +140,16 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
 
     private addHelpSection(containerEl: HTMLElement): void {
         const helpEl = containerEl.createEl('div', { cls: 'setting-item-description' });
-        helpEl.innerHTML = `
-            <h4>Usage Tips</h4>
-            <p>Configure hotkeys for all commands in Obsidian's main settings under <strong>Hotkeys</strong> (search for "Heading Helper").</p>
-            <p>Click on gutter badges (if enabled) to change heading levels directly with your mouse.</p>
-        `;
+        helpEl.createEl('hr')
+        const heading = helpEl.createEl('h4', { text: 'Usage Tips' });
+        heading.addClass('heading-helper-help-heading');
+
+        const p1 = helpEl.createEl('p');
+        p1.createEl('span', { text: "Configure hotkeys for all commands in Obsidian's main settings under " });
+        p1.createEl('strong', { text: 'Hotkeys' });
+        p1.createEl('span', { text: ' (search for "Heading Helper").' });
+
+        const p2 = helpEl.createEl('p');
+        p2.createEl('span', { text: 'Click on gutter badges (if enabled) to change heading levels directly with your mouse.' });
     }
 } 
