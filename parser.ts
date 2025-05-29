@@ -2,7 +2,7 @@ import { HeadingLevel, ParsedLine } from './types';
 
 export class MarkdownParser {
     // Regex to match: optional whitespace, optional list marker, optional heading markers
-    private static readonly LINE_PATTERN = /^(\s*)([-*+]\s+)?(#+)?\s*(.*?)$/;
+    private static readonly LINE_PATTERN = /^(\s*)([-*+]\s+)?(?:(#+)(?=\s))?\s*(.*?)$/;
 
     /**
      * Parse a line to extract its components
