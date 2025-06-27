@@ -45,7 +45,7 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Wrap after H6')
-            .setDesc('Allow H6 to demote to Paragraph. If disabled, H6 will remain H6 when demoted.')
+            .setDesc('Allow H6 to demote to paragraph. If disabled, H6 will remain H6 when demoted.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.wrapAfterH6)
                 .onChange(async (value) => {
@@ -141,13 +141,13 @@ export class HeadingHelperSettingTab extends PluginSettingTab {
     private addHelpSection(containerEl: HTMLElement): void {
         const helpEl = containerEl.createEl('div', { cls: 'setting-item-description' });
         helpEl.createEl('hr')
-        const heading = helpEl.createEl('h4', { text: 'Usage Tips' });
+        const heading = helpEl.createEl('h4', { text: 'Usage tips' });
         heading.addClass('heading-helper-help-heading');
 
         const p1 = helpEl.createEl('p');
         p1.createEl('span', { text: "Configure hotkeys for all commands in Obsidian's main settings under " });
         p1.createEl('strong', { text: 'Hotkeys' });
-        p1.createEl('span', { text: ' (search for "Heading Helper").' });
+        p1.createEl('span', { text: ' (search for "Heading helper").' });
 
         const p2 = helpEl.createEl('p');
         p2.createEl('span', { text: 'Click on gutter badges (if enabled) to change heading levels directly with your mouse.' });

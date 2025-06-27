@@ -65,7 +65,7 @@ export default class HeadingHelperPlugin extends Plugin {
         for (let level = 1; level <= 6; level++) {
             this.addCommand({
                 id: `set-heading-${level}`,
-                name: `Set as Heading ${level}`,
+                name: `Set as heading ${level}`,
                 editorCallback: (editor: Editor) =>
                     this.headingOps.setHeadingLevel(editor, level as HeadingLevel)
             });
@@ -74,7 +74,7 @@ export default class HeadingHelperPlugin extends Plugin {
         // Paragraph command
         this.addCommand({
             id: 'set-paragraph',
-            name: 'Set as Paragraph',
+            name: 'Set as paragraph',
             editorCallback: (editor: Editor) =>
                 this.headingOps.setHeadingLevel(editor, HeadingLevel.Paragraph)
         });

@@ -287,7 +287,7 @@ export class HeadingOperations {
             if (t.currentLevel === HeadingLevel.H6 && t.targetLevel === HeadingLevel.Paragraph && !this.settings.wrapAfterH6) {
                 issues.push({
                     type: 'demotion_blocked',
-                    message: 'Cannot demote H6 to Paragraph: "Wrap after H6" is disabled.',
+                    message: 'Cannot demote H6 to paragraph: "Wrap after H6" is disabled.',
                     currentLevel: t.currentLevel,
                     targetLevel: t.targetLevel,
                     lineNumber: t.lineNum + 1
@@ -335,7 +335,7 @@ export class HeadingOperations {
                     demotionsH5ToH6.forEach(t => {
                         issues.push({
                             type: 'demotion_blocked',
-                            message: 'Cannot demote H5 to H6: An H6 already existed in the original selection, and "Wrap after H6" is disabled.',
+                            message: 'Cannot demote H5 to H6: an H6 already existed in the original selection, and "Wrap after H6" is disabled.',
                             currentLevel: t.currentLevel,
                             targetLevel: t.targetLevel,
                             lineNumber: t.lineNum + 1

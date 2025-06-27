@@ -177,7 +177,7 @@ export class HierarchyChecker {
                 currentLevel,
                 targetLevel: HeadingLevel.H6,
                 lineNumber,
-                message: 'Cannot demote H6 to Paragraph: "Wrap after H6" is disabled. Enable this setting to allow conversion to Paragraph.'
+                message: 'Cannot demote H6 to paragraph: "Wrap after H6" is disabled. enable this setting to allow conversion to paragraph.'
             };
         }
 

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-heading-helper",
-	"version": "1.0.0",
+	"version": "1.0.3",
 	"description": "Cycle heading levels and display visual heading indicators in the gutter for Obsidian",
 	"main": "main.js",
 	"scripts": {
